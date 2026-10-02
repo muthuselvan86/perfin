@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Perfin V2 Local",
+      "Group": "Local development",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "perfin",
+      "Username": "perfin_app",
+      "SSLMode": "prefer"
+    }
+  }
+}

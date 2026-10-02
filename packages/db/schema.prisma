@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Currency {
+  USD
+  INR
+}
+
+enum CategoryKind {
+  ASSET
+  LIABILITY
+}
+
+model User {
+  id               String            @id @default(uuid()) @db.Uuid
+  authIssuer       String            @map("auth_issuer")
+  authSubject      String            @map("auth_subject")
+  email            String? // Contact only
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  householdMembers HouseholdMember[]
+
+  @@unique([authIssuer, authSubject])
+  @@map("user")
+}
+
+model Household {
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String
+  reportingCurrency Currency           @map("reporting_currency") // Chosen during setup
+  timeZone          String             @map("time_zone") // IANA timezone
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  householdMembers  HouseholdMember[]
+  accounts          Account[]
+  exchangeRates     ExchangeRate[]
+  netWorthSnapshots NetWorthSnapshot[]
+
+  @@map("households")
+}
+
+model HouseholdMember {
+  id          String    @id @default(uuid()) @db.Uuid
+  householdId String    @map("household_id") @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  displayName String    @map("display_name")
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  household          Household           @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  user               User?               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accountOwnerships  AccountOwnership[]
+  snapshotOwnerships SnapshotOwnership[]
+
+  @@unique([householdId, userId])
+  // Nullable user uniqueness is enforced through SQL below.
+  @@index([householdId, archivedAt])
+  @@index([userId])
+  @@map("household_members")
+}
+
+model Category {
+  id        String       @id @default(uuid()) @db.Uuid
+  code      String       @unique
+  name      String
+  kind      CategoryKind
+  sortOrder Int          @default(0) @map("sort_order")
+  isActive  Boolean      @default(true) @map("is_active")
+
+  accountTypes AccountType[]
+
+  @@map("categories")
+}
+
+model AccountType {
+  id         String  @id @default(uuid()) @db.Uuid
+  categoryId String  @map("category_id") @db.Uuid
+  code       String  @unique
+  name       String
+  sortOrder  Int     @default(0) @map("sort_order")
+  isActive   Boolean @default(true) @map("is_active")
+
+  category Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  accounts Account[]
+
+  @@index([categoryId])
+  @@map("account_types")
+}
+
+model Account {
+  id              String    @id @default(uuid()) @db.Uuid
+  householdId     String    @map("household_id") @db.Uuid
+  accountTypeId   String    @map("account_type_id") @db.Uuid
+  name            String
+  institutionName String?   @map("institution_name")
+  identifierLast4 String?   @map("identifier_last4") @db.VarChar(4)
+  countryCode     String    @map("country_code") @db.Char(2)
+  currency        Currency
+  balance         Decimal   @db.Decimal(19, 2)
+  balanceAsOf     DateTime  @map("balance_as_of") @db.Date
+  notes           String?
+  version         Int       @default(1)
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  household        Household          @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  accountType      AccountType        @relation(fields: [accountTypeId], references: [id], onDelete: Restrict)
+  ownerships       AccountOwnership[]
+  snapshotAccounts SnapshotAccount[]
+
+  @@index([householdId, archivedAt])
+  @@index([accountTypeId])
+  @@map("accounts")
+}
+
+model AccountOwnership {
+  accountId        String   @map("account_id") @db.Uuid
+  memberId         String   @map("member_id") @db.Uuid
+  ownershipPercent Decimal  @map("ownership_percent") @db.Decimal(5, 2)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  member  HouseholdMember @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([accountId, memberId])
+  @@index([memberId])
+  @@map("account_ownerships")
+}
+
+model ExchangeRate {
+  id            String   @id @default(uuid()) @db.Uuid
+  householdId   String   @map("household_id") @db.Uuid
+  baseCurrency  Currency @map("base_currency")
+  quoteCurrency Currency @map("quote_currency")
+  rate          Decimal  @db.Decimal(24, 12)
+  effectiveDate DateTime @map("effective_date") @db.Date
+  source        String   @default("MANUAL")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+
+  // Assumes one authoritative rate per pair per day per household.
+  @@unique([householdId, baseCurrency, quoteCurrency, effectiveDate])
+  @@map("exchange_rates")
+}
+
+model NetWorthSnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  householdId        String   @map("household_id") @db.Uuid
+  snapshotDate       DateTime @map("snapshot_date") @db.Date
+  reportingCurrency  Currency @map("reporting_currency")
+  calculationVersion Int      @map("calculation_version")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  household Household         @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  accounts  SnapshotAccount[]
+
+  @@unique([householdId, snapshotDate])
+  @@map("net_worth_snapshots")
+}
+
+model SnapshotAccount {
+  id                String       @id @default(uuid()) @db.Uuid
+  snapshotId        String       @map("snapshot_id") @db.Uuid
+  accountId         String       @map("account_id") @db.Uuid
+  accountName       String       @map("account_name")
+  categoryCode      String       @map("category_code")
+  accountTypeCode   String       @map("account_type_code")
+  kind              CategoryKind
+  countryCode       String       @map("country_code") @db.Char(2)
+  nativeCurrency    Currency     @map("native_currency")
+  nativeBalance     Decimal      @map("native_balance") @db.Decimal(19, 2)
+  balanceAsOf       DateTime     @map("balance_as_of") @db.Date
+  fxRateToReporting Decimal      @map("fx_rate_to_reporting") @db.Decimal(24, 12)
+  fxEffectiveDate   DateTime?    @map("fx_effective_date") @db.Date
+  fxSource          String       @map("fx_source")
+  reportingBalance  Decimal      @map("reporting_balance") @db.Decimal(19, 2)
+
+  snapshot   NetWorthSnapshot    @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  account    Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  ownerships SnapshotOwnership[]
+
+  @@unique([snapshotId, accountId])
+  @@index([accountId])
+  @@map("snapshot_accounts")
+}
+
+model SnapshotOwnership {
+  snapshotAccountId         String  @map("snapshot_account_id") @db.Uuid
+  memberId                  String  @map("member_id") @db.Uuid
+  ownershipPercent          Decimal @map("ownership_percent") @db.Decimal(5, 2)
+  allocatedReportingBalance Decimal @map("allocated_reporting_balance") @db.Decimal(19, 2)
+
+  snapshotAccount SnapshotAccount @relation(fields: [snapshotAccountId], references: [id], onDelete: Restrict)
+  member          HouseholdMember @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([snapshotAccountId, memberId])
+  @@index([memberId])
+  @@map("snapshot_ownerships")
+}

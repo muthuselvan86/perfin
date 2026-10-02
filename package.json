@@ -1,0 +1,20 @@
+{
+  "name": "perfin-v2",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "npm -w @perfin/db run migrate:dev",
+    "db:seed": "npm -w @perfin/db run seed",
+    "db:studio": "npm -w @perfin/db run studio",
+    "pgadmin:up": "docker compose --profile tools up -d pgadmin",
+    "pgadmin:down": "docker compose stop pgadmin",
+    "pgadmin:logs": "docker compose logs --tail=100 -f pgadmin",
+    "pgadmin:status": "docker compose ps pgadmin",
+    "db:check": "npm -w @perfin/db run check:connection"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+packages/db/src/generated/
+
+# Local environment; commit only the sanitized template
+.env
+.env.*
+!.env.example
+*.env
+
+# Local keys, credentials and logs
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+.npmrc.local
+secrets/
+
+# Database backups and local exports (keep Prisma migration SQL)
+*.backup
+*.dump
+*.sql.gz
+*.sql.bz2
+*.sql.xz
+dump.sql
+data.sql
+backups/
+exports/
+
+# Local OS/editor files
+.DS_Store
+.idea/
